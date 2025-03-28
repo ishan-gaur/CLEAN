@@ -35,6 +35,12 @@ If you find CLEAN helpful in your research, please consider citing us:
 
 ## 1. Install
 
+### 0.1 Install for EC Guidance
+- mamba env create -f CLEAN/app/env.yml
+- copy weights into CLEAN/app/data/pretrained
+- copy/link swissprot fasta to CLEAN/app/data/input
+- python build.py install from CLEAN/app
+
 ### 1.1 Requirements
 
 Python >= 3.6; PyTorch >= 1.11.0; CUDA >= 10.1

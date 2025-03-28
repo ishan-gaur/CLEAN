@@ -115,10 +115,13 @@ def ensure_dirs(path):
         os.makedirs(path)
         
 def retrive_esm1b_embedding(fasta_name):
-    esm_script = "esm/scripts/extract.py"
+    from pathlib import Path
+    clean_src_path = Path(__file__).resolve().parent
+    app_path = clean_src_path.parent.parent
+    esm_script = app_path / "extract.py"
     esm_out = "data/esm_data"
     esm_type = "esm1b_t33_650M_UR50S"
-    fasta_name = "data/" + fasta_name + ".fasta"
+    fasta_name = app_path / "data/" + fasta_name + ".fasta"
     command = ["python", esm_script, esm_type, 
               fasta_name, esm_out, "--include", "mean"]
     subprocess.run(command)
