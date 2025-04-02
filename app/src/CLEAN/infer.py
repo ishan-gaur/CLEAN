@@ -1,8 +1,9 @@
 import torch
-from .utils import * 
-from .model import LayerNormNet
-from .distance_map import *
-from .evaluate import *
+from CLEAN.utils import * 
+# from CLEAN.model import LayerNormNet
+from CLEAN.model import *
+from CLEAN.distance_map import *
+from CLEAN.evaluate import *
 import pandas as pd
 import warnings
 

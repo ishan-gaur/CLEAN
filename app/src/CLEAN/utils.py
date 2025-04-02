@@ -116,15 +116,23 @@ def ensure_dirs(path):
         
 def retrive_esm1b_embedding(fasta_name):
     from pathlib import Path
-    clean_src_path = Path(__file__).resolve().parent
-    app_path = clean_src_path.parent.parent
-    esm_script = app_path / "extract.py"
+    from CLEAN import extract as esm_extract
+    clean_install_path = Path(__file__).resolve().parent
+    clean_src_path = Path.home() / "CLEAN"
+    esm_script = clean_install_path / "extract.py"
     esm_out = "data/esm_data"
     esm_type = "esm1b_t33_650M_UR50S"
-    fasta_name = app_path / "data/" + fasta_name + ".fasta"
+    fasta_name = clean_src_path / "app" / "data" / (fasta_name + ".fasta")
     command = ["python", esm_script, esm_type, 
               fasta_name, esm_out, "--include", "mean"]
-    subprocess.run(command)
+    print(command)
+    # subprocess.run(command)
+    esm_extract.run(
+        model_location=esm_type,
+        fasta_file=fasta_name,
+        output_dir=esm_out,
+        include=["mean"]
+    )
  
 def compute_esm_distance(train_file):
     ensure_dirs('./data/distance_map/')

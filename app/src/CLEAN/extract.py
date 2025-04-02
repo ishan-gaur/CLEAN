@@ -6,10 +6,11 @@
 
 import argparse
 import pathlib
+from tqdm import tqdm
 
 import torch
 
-from esm import Alphabet, FastaBatchedDataset, ProteinBertModel, pretrained, MSATransformer
+from CLEAN.esm import Alphabet, FastaBatchedDataset, ProteinBertModel, pretrained, MSATransformer
 
 
 def create_parser():
@@ -60,36 +61,49 @@ def create_parser():
     return parser
 
 
-def run(args):
-    model, alphabet = pretrained.load_model_and_alphabet(args.model_location)
+def run(
+    model_location: str,
+    fasta_file: pathlib.Path,
+    output_dir: pathlib.Path,
+    toks_per_batch: int = 4096,
+    repr_layers: list = [-1],
+    include: list = ["mean"],
+    truncation_seq_length: int = 1022,
+    nogpu: bool = False
+):
+    if isinstance(fasta_file, str):
+        fasta_file = pathlib.Path(fasta_file)
+    if isinstance(output_dir, str):
+        output_dir = pathlib.Path(output_dir)
+    model, alphabet = pretrained.load_model_and_alphabet(model_location)
     model.eval()
     if isinstance(model, MSATransformer):
         raise ValueError(
             "This script currently does not handle models with MSA input (MSA Transformer)."
         )
-    if torch.cuda.is_available() and not args.nogpu:
+    if torch.cuda.is_available() and not nogpu:
         model = model.cuda()
         print("Transferred model to GPU")
 
-    dataset = FastaBatchedDataset.from_file(args.fasta_file)
-    batches = dataset.get_batch_indices(args.toks_per_batch, extra_toks_per_seq=1)
+    dataset = FastaBatchedDataset.from_file(fasta_file)
+    batches = dataset.get_batch_indices(toks_per_batch, extra_toks_per_seq=1)
     data_loader = torch.utils.data.DataLoader(
-        dataset, collate_fn=alphabet.get_batch_converter(args.truncation_seq_length), batch_sampler=batches
+        dataset, collate_fn=alphabet.get_batch_converter(truncation_seq_length), batch_sampler=batches
     )
-    print(f"Read {args.fasta_file} with {len(dataset)} sequences")
+    print(f"Read {fasta_file} with {len(dataset)} sequences")
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    return_contacts = "contacts" in args.include
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return_contacts = "contacts" in include
 
-    assert all(-(model.num_layers + 1) <= i <= model.num_layers for i in args.repr_layers)
-    repr_layers = [(i + model.num_layers + 1) % (model.num_layers + 1) for i in args.repr_layers]
+    assert all(-(model.num_layers + 1) <= i <= model.num_layers for i in repr_layers)
+    repr_layers = [(i + model.num_layers + 1) % (model.num_layers + 1) for i in repr_layers]
 
     with torch.no_grad():
-        for batch_idx, (labels, strs, toks) in enumerate(data_loader):
+        for batch_idx, (labels, strs, toks) in tqdm(enumerate(data_loader)):
             print(
                 f"Processing {batch_idx + 1} of {len(batches)} batches ({toks.size(0)} sequences)"
             )
-            if torch.cuda.is_available() and not args.nogpu:
+            if torch.cuda.is_available() and not nogpu:
                 toks = toks.to(device="cuda", non_blocking=True)
 
             out = model(toks, repr_layers=repr_layers, return_contacts=return_contacts)
@@ -102,23 +116,23 @@ def run(args):
                 contacts = out["contacts"].to(device="cpu")
 
             for i, label in enumerate(labels):
-                args.output_file = args.output_dir / f"{label}.pt"
-                args.output_file.parent.mkdir(parents=True, exist_ok=True)
+                output_file = output_dir / f"{label}.pt"
+                output_file.parent.mkdir(parents=True, exist_ok=True)
                 result = {"label": label}
-                truncate_len = min(args.truncation_seq_length, len(strs[i]))
+                truncate_len = min(truncation_seq_length, len(strs[i]))
                 # Call clone on tensors to ensure tensors are not views into a larger representation
                 # See https://github.com/pytorch/pytorch/issues/1995
-                if "per_tok" in args.include:
+                if "per_tok" in include:
                     result["representations"] = {
                         layer: t[i, 1 : truncate_len + 1].clone()
                         for layer, t in representations.items()
                     }
-                if "mean" in args.include:
+                if "mean" in include:
                     result["mean_representations"] = {
                         layer: t[i, 1 : truncate_len + 1].mean(0).clone()
                         for layer, t in representations.items()
                     }
-                if "bos" in args.include:
+                if "bos" in include:
                     result["bos_representations"] = {
                         layer: t[i, 0].clone() for layer, t in representations.items()
                     }
@@ -127,14 +141,24 @@ def run(args):
 
                 torch.save(
                     result,
-                    args.output_file,
+                    output_file,
                 )
 
 
 def main():
     parser = create_parser()
     args = parser.parse_args()
-    run(args)
+    run(
+        args.model_location,
+        args.fasta_file,
+        args.output_dir,
+        toks_per_batch=args.toks_per_batch,
+        repr_layers=args.repr_layers,
+        include=args.include,
+        truncation_seq_length=args.truncation_seq_length,
+        nogpu=args.nogpu,
+    )
+    print(f"Extracted representations to {args.output_dir}")
 
 if __name__ == "__main__":
     main()

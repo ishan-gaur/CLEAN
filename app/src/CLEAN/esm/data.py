@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from tqdm import tqdm
 import itertools
 import os
 from typing import Sequence, Tuple, List, Union
@@ -11,7 +12,7 @@ import re
 import shutil
 import torch
 from pathlib import Path
-from CLEAN.constants import proteinseq_toks
+from CLEAN.esm.constants import proteinseq_toks
 
 RawMSA = Sequence[Tuple[str, str]]
 
@@ -37,7 +38,7 @@ class FastaBatchedDataset(object):
             buf = []
 
         with open(fasta_file, "r") as infile:
-            for line_idx, line in enumerate(infile):
+            for line_idx, line in tqdm(enumerate(infile), desc="Reading FASTA file"):
                 if line.startswith(">"):  # label line
                     _flush_current_seq()
                     line = line[1:].strip()
