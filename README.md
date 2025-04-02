@@ -1,4 +1,4 @@
-# CLEAN: Enzyme Function Prediction using Contrastive Learning
+# Fork of CLEAN that comes with ESM1b to prevent issues with simultaneous ESM3+ imports
 
   
 
