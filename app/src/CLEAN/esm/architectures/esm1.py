@@ -192,6 +192,87 @@ class ProteinBertModel(nn.Module):
 
         return result
 
+    def forward_one_hot(self, tokens_one_hot, repr_layers=[], need_head_weights=False, return_contacts=False):
+        if return_contacts:
+            need_head_weights = True
+
+        assert tokens_one_hot.ndim == 3
+        padding_mask = tokens_one_hot.eq(self.padding_idx)  # B, T, A
+
+        one_hot_embedding_mat = self.embed_tokens.weight
+        embedded_tokens = torch.einsum("bta,ah->bth", tokens_one_hot, one_hot_embedding_mat)
+        x = self.embed_scale * embedded_tokens
+
+        if getattr(self.args, "token_dropout", False):
+            x.masked_fill_((tokens_one_hot == self.mask_idx).unsqueeze(-1), 0.0)
+            # x: B x T x C
+            mask_ratio_train = 0.15 * 0.8
+            src_lengths = (~padding_mask).sum(-1)
+            mask_ratio_observed = (tokens_one_hot == self.mask_idx).sum(-1).float() / src_lengths
+            x = x * (1 - mask_ratio_train) / (1 - mask_ratio_observed)[:, None, None]
+
+        x = x + self.embed_positions(tokens_one_hot)
+
+        if self.model_version == "ESM-1b":
+            if self.emb_layer_norm_before:
+                x = self.emb_layer_norm_before(x)
+            if padding_mask is not None:
+                x = x * (1 - padding_mask.unsqueeze(-1).type_as(x))
+
+        repr_layers = set(repr_layers)
+        hidden_representations = {}
+        if 0 in repr_layers:
+            hidden_representations[0] = x
+
+        if need_head_weights:
+            attn_weights = []
+
+        # (B, T, E) => (T, B, E)
+        x = x.transpose(0, 1)
+
+        if not padding_mask.any():
+            padding_mask = None
+
+        for layer_idx, layer in enumerate(self.layers):
+            x, attn = layer(
+                x, self_attn_padding_mask=padding_mask, need_head_weights=need_head_weights
+            )
+            if (layer_idx + 1) in repr_layers:
+                hidden_representations[layer_idx + 1] = x.transpose(0, 1)
+            if need_head_weights:
+                # (H, B, T, T) => (B, H, T, T)
+                attn_weights.append(attn.transpose(1, 0))
+
+        if self.model_version == "ESM-1b":
+            x = self.emb_layer_norm_after(x)
+            x = x.transpose(0, 1)  # (T, B, E) => (B, T, E)
+
+            # last hidden representation should have layer norm applied
+            if (layer_idx + 1) in repr_layers:
+                hidden_representations[layer_idx + 1] = x
+            x = self.lm_head(x)
+        else:
+            x = F.linear(x, self.embed_out, bias=self.embed_out_bias)
+            x = x.transpose(0, 1)  # (T, B, E) => (B, T, E)
+
+        result = {"logits": x, "representations": hidden_representations}
+        if need_head_weights:
+            # attentions: B x L x H x T x T
+            attentions = torch.stack(attn_weights, 1)
+            if self.model_version == "ESM-1":
+                # ESM-1 models have an additional null-token for attention, which we remove
+                attentions = attentions[..., :-1]
+            if padding_mask is not None:
+                attention_mask = 1 - padding_mask.type_as(attentions)
+                attention_mask = attention_mask.unsqueeze(1) * attention_mask.unsqueeze(2)
+                attentions = attentions * attention_mask[:, None, None, :, :]
+            result["attentions"] = attentions
+            if return_contacts:
+                contacts = self.contact_head(tokens_one_hot, attentions)
+                result["contacts"] = contacts
+
+        return result
+
     def predict_contacts(self, tokens):
         return self(tokens, return_contacts=True)["contacts"]
 
