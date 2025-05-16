@@ -1,6 +1,9 @@
-# CLEAN: Enzyme Function Prediction using Contrastive Learning
+# Fork of CLEAN that comes with ESM1b to prevent issues with simultaneous ESM3+ imports
 
-  
+To setup your environment:
+1. create a conda environment using the [env.yml](https://github.com/ishan-gaur/CLEAN/blob/main/app/env.yml)
+2. run ```python build.py instlal``` from CLEAN/app
+3. copy the pretrained weights to CLEAN/app/data/pretrained
 
 [![DOI](https://zenodo.org/badge/525112894.svg)](https://zenodo.org/badge/latestdoi/525112894)
 
@@ -34,12 +37,6 @@ If you find CLEAN helpful in your research, please consider citing us:
 
 
 ## 1. Install
-
-### 0.1 Install for EC Guidance
-- mamba env create -f CLEAN/app/env.yml
-- copy weights into CLEAN/app/data/pretrained
-- copy/link swissprot fasta to CLEAN/app/data/input
-- python build.py install from CLEAN/app
 
 ### 1.1 Requirements
 
